@@ -1,34 +1,67 @@
 #ifndef FUNCTION_MAXIMA_H
 #define FUNCTION_MAXIMA_H
 
-//W tym zadaniu należy zaimplementować wzorzec klasy
-//
-//template<typename A, typename V> class FunctionMaxima;
-//
-//służącej do operacji na funkcji, której dziedziną jest pewien zbiór obiektów
-//typu A. Funkcja przyporządkowuje każdemu elementowi dziedziny wartość typu V.
-//Od typu A (odpowiednio V) wymagamy, aby możliwe było porównanie x < y,
-//        gdzie x i y są typu A (odpowiednio V).
-//
-//Powiemy, że x jest lokalnym maksimum funkcji f, gdy spełnione są dwa warunki:
-//1) x jest najmniejszym (względem <) elementem dziedziny funkcji f lub
-//        f(x) nie jest mniejsze niż f(l), gdzie l jest największym elementem
-//elementem dziedziny f, takim że l < x.
-//2) x jest największym (względem <) elementem dziedziny funkcji f lub
-//        f(x) nie jest mniejsze niż f(r), gdzie r jest najmniejszym elementem
-//dziedziny f, takim że x < r.
-//
-//Dodatkową funkcjonalnością klasy FunctionMaxima<A, V> ma być szybki
-//        dostęp do lokalnych maksimów reprezentowanej aktualnie funkcji.
-//
-//Niech n oznacza aktualną wielkość dziedziny funkcji.
-//Oczekujemy następujących składowych klasy:
+#include <set>
+#include <memory>
+
+
+class InvalidArg : public std::exception {
+public:
+    InvalidArg() noexcept = default;
+
+    InvalidArg(const InvalidArg &other) noexcept = default;
+
+    InvalidArg(InvalidArg &&other) noexcept = default;
+
+    InvalidArg &operator=(const InvalidArg &other) noexcept = default;
+
+    InvalidArg &operator=(InvalidArg &&other) noexcept = default;
+
+    const char *what() const noexcept override {
+        return "invalid argument value";
+    }
+};
 
 
 template<typename A, typename V>
 class FunctionMaxima {
 public:
-    FunctionMaxima() = default;
+    class point_type {
+    public:
+        ~point_type() = default;
+
+        point_type(const point_type &other) = default;
+
+        point_type(point_type &&other) noexcept = default;
+
+        point_type &operator=(const point_type &other) = default;
+
+        point_type &operator=(point_type &&other) noexcept = default;
+
+        const A &arg() const {
+            return a_ptr.get();
+        }
+
+        const V &value() const {
+            return v_ptr.get();
+        }
+
+    private:
+        using a_ptr_t = std::shared_ptr<A>;
+        using v_ptr_t = std::shared_ptr<V>;
+
+        a_ptr_t a_ptr;
+        v_ptr_t v_ptr;
+
+        explicit point_type(const A &a) : a_ptr(std::make_shared<A>(a)) {}
+
+        point_type(const A &a, const V &v) : a_ptr(std::make_shared<A>(a)),
+                                             v_ptr(std::make_shared<V>(v)) {}
+    };
+
+
+    FunctionMaxima() noexcept: pts_set(point_type::cmp_by_arg),
+                               max_set(point_type::cmp_by_val_then_by_arg) {};
 
     ~FunctionMaxima() = default;
 
@@ -40,20 +73,81 @@ public:
 
     FunctionMaxima &operator=(FunctionMaxima<A, V> &&other) noexcept = default;
 
-    const V &value_at(const A &a) const;
+    const V &value_at(const A &a) const {
+        auto pt = find(a);
+        if (pt == end()) {
+            throw InvalidArg();
+        }
+        else {
+            return pt->value();
+        }
+    }
 
     void set_value(const A &a, const V &v);
 
-    void erase(const A &a);
+    void erase(const A &a) {
+        auto pt = find(a);
+        if (pt != end()) {
+            pts_set.erase(pt);
+        }
+    }
+
+private:
+    class SetValueGuard {
+        //TODO: implement
+    };
+
+    static inline auto cmp_by_arg = [](const point_type &pt_1,
+                                      const point_type &pt_2) {
+        return pt_1.arg() < pt_2.arg();
+    };
+
+    static inline auto cmp_by_val_then_by_arg = [](const point_type &pt_1,
+                                                  const point_type &pt_2) {
+        if (!(pt_1.value() < pt_2.value()) && !(pt_2.value() < pt_1.value())) {
+            return cmp_by_arg(pt_1, pt_2);
+        }
+        else {
+            return pt_1.value() < pt_2.value();
+        }
+    };
+
+    using pts_set_t = std::set<point_type, decltype(cmp_by_arg)>;
+    using max_set_t = std::set<point_type, decltype(cmp_by_val_then_by_arg)>;
+
+    pts_set_t pts_set;
+    max_set_t max_set;
+
+public:
+    using iterator = typename pts_set_t::iterator;
+    using mx_iterator = typename max_set_t::iterator;
+    using size_type = typename pts_set_t::size_type;
+
+    iterator begin() const noexcept {
+        return pts_set.begin();
+    }
+
+    iterator end() const noexcept {
+        return pts_set.end();
+    }
+
+    iterator find(const A &a) const {
+        return pts_set.find(point_type(a));
+    }
+
+    mx_iterator mx_begin() const noexcept {
+        return max_set.begin();
+    }
+
+    mx_iterator mx_end() const noexcept {
+        return max_set.end();
+    }
+
+    size_type size() const noexcept {
+        return pts_set.size();
+    }
 };
 
-
-// Zwraca wartość w punkcie a, rzuca wyjątek InvalidArg, jeśli a nie
-// należy do dziedziny funkcji. Złożoność najwyżej O(log n).
-template<typename A, typename V>
-V const &FunctionMaxima<A, V>::value_at(const A &a) const {
-    //TODO: implement
-}
 
 // Zmienia funkcję tak, żeby zachodziło f(a) = v. Jeśli a nie należy do
 // obecnej dziedziny funkcji, jest do niej dodawany. Najwyżej O(log n).
@@ -61,97 +155,5 @@ template<typename A, typename V>
 void FunctionMaxima<A, V>::set_value(const A &a, const V &v) {
     //TODO: implement
 }
-
-// Usuwa a z dziedziny funkcji. Jeśli a nie należało do dziedziny funkcji,
-// nie dzieje się nic. Złożoność najwyżej O(log n).
-template<typename A, typename V>
-void FunctionMaxima<A, V>::erase(const A &a) {
-
-}
-
-//* Typ point_type umożliwiający dostęp do „punktów” funkcji, udostępniający
-//        następujące funkcje:
-//
-//// Zwraca argument funkcji.
-//A const& arg() const;
-//
-//// Zwraca wartość funkcji w tym punkcie.
-//V const& value() const;
-//
-//Nie powinno być możliwe bezpośrednie konstruowanie obiektów typu
-//point_type, ale zezwalamy na ich kopiowanie i przypisywanie.
-//
-//* Typ iterator zachowujący się tak jak bidirectional_iterator
-//(http://www.cplusplus.com/reference/iterator/BidirectionalIterator),
-//iterujący po punktach funkcji.
-//Dla zmiennej it typu wyrażenie *it powinno być typu point_type const&.
-//
-//* Metody dające dostęp do punktów funkcji:
-//
-//// iterator wskazujący na pierwszy punkt
-//iterator begin() const;
-//
-//// iterator wskazujący za ostatni punkt
-//iterator end() const;
-//
-//// Iterator, który wskazuje na punkt funkcji o argumencie a lub end(),
-//// jeśli takiego argumentu nie ma w dziedzinie funkcji.
-//iterator find(A const& a) const;
-//
-//Powyższe trzy metody powinny działać w czasie nie gorszym niż O(log n).
-//Przejście po wszystkich punktach funkcji (np. w poniższy sposób) powinno
-//        odbywać się w czasie O(n), w kolejności rosnących argumentów.
-//
-//FunctionMaxima<int, int> F;
-//for (const auto& p : F) {
-//std::cout << p.arg() << " -> " << p.value() << std::endl;
-//}
-//
-//* Typ mx_iterator zachowujący się znów jak bidirectional_iterator,
-//iterujący po lokalnych maksimach funkcji.
-//Dla zmiennej it typu wyrażenie *it powinno być typu point_type const&.
-//
-//* Metody dające dostęp do lokalnych maksimów funkcji:
-//
-//// iterator wskazujący na pierwsze lokalne maksimum
-//mx_iterator mx_begin() const;
-//
-//// iterator wskazujący za ostatnie lokalne maksimum
-//mx_iterator mx_end() const;
-//
-//Jeśli przez k oznaczymy rozmiar zbioru lokalnych maksimów, to powyższe
-//        metody powinny działać w czasie nie gorszym niż O(log k).
-//Przejście (nieprzeplatane z modyfikacją funkcji) po wszystkich maksimach
-//        funkcji powinno odbywać się w czasie O(k), w kolejności malejących wartości.
-//W szczególności oznacza to, że w przypadku funkcji F o niepustej dziedzinie
-//        F.mx_begin()->value() jest największą wartością tej funkcji.
-//
-//W przypadku takich samych wartości dwóch maksimów, najpierw powinniśmy
-//dotrzeć do punktu o mniejszym argumencie.
-//
-//* Typ size_type reprezentujący rozmiar dziedziny i funkcja zwracająca ten
-//        rozmiar:
-//size_type size() const;
-//
-//Zakładamy, że
-//        * klasy A i V mają konstruktory kopiujące;
-//* dostępne są:
-//bool operator<(A const& x, A const &y);
-//bool operator<(V const& x, V const &y);
-//* w powyższym opisie równość a i b oznacza !(a < b) && !(b < a);
-//* generalnie, o porządku < zakładamy to samo, co domyślnie zakłada np. std::set.
-//
-//Dodatkowo:
-//* Wszystkie operacje na funkcji powinny gwarantować silną odporność
-//na wyjątki, a tam gdzie jest to możliwe i pożądane, powinny być no-throw.
-//* Klasa powinna być przezroczysta na wyjątki, czyli powinna przepuszczać
-//wszelkie wyjątki zgłaszane przez wywoływane przez nią funkcje i przez
-//operacje na jej składowych.
-//* Uznajemy, że argumenty i wartości funkcji mogą być obiektami niemałych
-//        rozmiarów. Reprezentacja funkcji powinna zatem utrzymywać jak najmniej
-//        kopii argumentów i wartości. W szczególności, dobrze byłoby, aby funkcja
-//będąca kopią innej funkcji współdzieliła z nią argumenty i wartości.
-//* Wycieki pamięci są zabronione. :)
-//* Klasa InvalidArg powinna dziedziczyć po std::exception.
 
 #endif // FUNCTION_MAXIMA_H

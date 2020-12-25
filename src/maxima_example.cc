@@ -38,14 +38,14 @@ struct same {
 
 
 template<typename A, typename V>
-bool fun_equal(const FunctionMaxima <A, V> &F,
+bool fun_equal(const FunctionMaxima<A, V> &F,
                const std::initializer_list<std::pair<A, V>> &L) {
     return F.size() == L.size() &&
            std::equal(F.begin(), F.end(), L.begin(), same<A, V>());
 }
 
 template<typename A, typename V>
-bool fun_mx_equal(const FunctionMaxima <A, V> &F,
+bool fun_mx_equal(const FunctionMaxima<A, V> &F,
                   const std::initializer_list<std::pair<A, V>> &L) {
     return static_cast<typename FunctionMaxima<A, V>::size_type>(std::distance(
             F.mx_begin(), F.mx_end())) == L.size() &&
@@ -100,7 +100,7 @@ int main() {
 
     std::vector<FunctionMaxima<Secret, Secret>::point_type> v;
     {
-        FunctionMaxima <Secret, Secret> temp;
+        FunctionMaxima<Secret, Secret> temp;
         temp.set_value(Secret::create(1), Secret::create(10));
         temp.set_value(Secret::create(2), Secret::create(20));
         v.push_back(*temp.begin());
