@@ -74,36 +74,28 @@ public:
     FunctionMaxima &operator=(FunctionMaxima<A, V> &&other) noexcept = default;
 
     const V &value_at(const A &a) const {
-        auto pt = find(a);
-        if (pt == end()) {
+        iterator it = find(a);
+        
+        if (it == end()) {
             throw InvalidArg();
         }
         else {
-            return pt->value();
+            return it->value();
         }
     }
 
     void set_value(const A &a, const V &v);
 
-    void erase(const A &a) {
-        auto pt = find(a);
-        if (pt != end()) {
-            pts_set.erase(pt);
-        }
-    }
+    void erase(const A &a);
 
 private:
-    class SetValueGuard {
-        //TODO: implement
-    };
-
     static inline auto cmp_by_arg = [](const point_type &pt_1,
-                                      const point_type &pt_2) {
+                                       const point_type &pt_2) {
         return pt_1.arg() < pt_2.arg();
     };
 
     static inline auto cmp_by_val_then_by_arg = [](const point_type &pt_1,
-                                                  const point_type &pt_2) {
+                                                   const point_type &pt_2) {
         if (!(pt_1.value() < pt_2.value()) && !(pt_2.value() < pt_1.value())) {
             return cmp_by_arg(pt_1, pt_2);
         }
@@ -117,6 +109,49 @@ private:
 
     pts_set_t pts_set;
     max_set_t max_set;
+
+
+    template<typename S>
+    class InsertGuard {
+    public:
+        explicit InsertGuard(S *set) : set(set), rollback(false) {}
+
+        ~InsertGuard() {
+            if (rollback) {
+                set->erase(it);
+            }
+        }
+
+        InsertGuard(const InsertGuard &other) = delete;
+
+        InsertGuard &operator=(const InsertGuard &other) = delete;
+
+        InsertGuard(InsertGuard &&other) = delete;
+
+        InsertGuard &operator=(InsertGuard &&other) = delete;
+
+        void insert(const point_type &pt) {
+            it = set->insert(pt).first;
+            rollback = true;
+        }
+
+        void drop_rollback() {
+            rollback = false;
+        }
+
+    private:
+        S *set;
+        typename S::iterator it;
+        bool rollback;
+    };
+
+
+    using iterator_t = typename pts_set_t::iterator;
+
+    bool is_local_max(iterator_t left, iterator_t middle, iterator_t right) const {
+        return (left == middle || !(middle->value() < left->value()))
+               && (right == end() || !(middle->value() < right->value()));
+    };
 
 public:
     using iterator = typename pts_set_t::iterator;
@@ -154,6 +189,50 @@ public:
 template<typename A, typename V>
 void FunctionMaxima<A, V>::set_value(const A &a, const V &v) {
     //TODO: implement
+}
+
+template<typename A, typename V>
+void FunctionMaxima<A, V>::erase(const A &a) {
+    if (size() == 1) {
+        max_set.clear();
+        pts_set.clear();
+    }
+    else if (size() > 0) {
+        iterator it = find(a);
+        bool has_left = it != begin();
+        bool has_right = it + 1 != end();
+        mx_iterator mx_it = max_set.find(a);
+        bool was_local_max = mx_it != mx_end();
+        InsertGuard<max_set_t> left_guard{max_set}, right_guard{max_set};
+
+        if (has_left) {
+            iterator middle = it - 1;
+            iterator left = middle != begin() ? middle - 1 : middle;
+            iterator right = it + 1;
+
+            if (is_local_max(left, middle, right)) {
+                left_guard.insert(*middle);
+            }
+        }
+
+        if (has_right) {
+            iterator left = has_left ? it - 1 : it + 1;
+            iterator middle = it + 1;
+            iterator right = middle != end() ? middle + 1 : middle;
+
+            if (is_local_max(left, middle, right)) {
+                right_guard.insert(*middle);
+            }
+        }
+
+        pts_set.erase(it);
+        if (was_local_max) {
+            max_set.erase(mx_it);
+        }
+
+        left_guard.drop_rollback();
+        right_guard.drop_rollback();
+    }
 }
 
 #endif // FUNCTION_MAXIMA_H
