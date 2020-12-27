@@ -27,6 +27,9 @@ template<typename A, typename V>
 class FunctionMaxima {
 public:
     class point_type {
+        friend class FunctionMaxima;
+
+
     public:
         ~point_type() = default;
 
@@ -39,29 +42,33 @@ public:
         point_type &operator=(point_type &&other) noexcept = default;
 
         const A &arg() const {
-            return a_ptr.get();
+            return *a_ptr;
         }
 
         const V &value() const {
-            return v_ptr.get();
+            return *v_ptr;
         }
 
     private:
-        using a_ptr_t = std::shared_ptr<A>;
-        using v_ptr_t = std::shared_ptr<V>;
+        using a_ptr_t = std::shared_ptr<const A>;
+        using v_ptr_t = std::shared_ptr<const V>;
 
         a_ptr_t a_ptr;
         v_ptr_t v_ptr;
 
-        explicit point_type(const A &a) : a_ptr(std::make_shared<A>(a)) {}
+        point_type() = default;
+
+        explicit point_type(const A *a) : a_ptr(a) {}
+
+        point_type(const A *a, const V &v) : a_ptr(a),
+                                             v_ptr(std::make_shared<V>(v)) {}
 
         point_type(const A &a, const V &v) : a_ptr(std::make_shared<A>(a)),
                                              v_ptr(std::make_shared<V>(v)) {}
     };
 
 
-    FunctionMaxima() noexcept: pts_set(point_type::cmp_by_arg),
-                               max_set(point_type::cmp_by_val_then_by_arg) {};
+    FunctionMaxima() noexcept = default;
 
     ~FunctionMaxima() = default;
 
@@ -75,7 +82,7 @@ public:
 
     const V &value_at(const A &a) const {
         iterator it = find(a);
-        
+
         if (it == end()) {
             throw InvalidArg();
         }
@@ -89,23 +96,34 @@ public:
     void erase(const A &a);
 
 private:
-    static inline auto cmp_by_arg = [](const point_type &pt_1,
-                                       const point_type &pt_2) {
-        return pt_1.arg() < pt_2.arg();
-    };
-
-    static inline auto cmp_by_val_then_by_arg = [](const point_type &pt_1,
-                                                   const point_type &pt_2) {
-        if (!(pt_1.value() < pt_2.value()) && !(pt_2.value() < pt_1.value())) {
-            return cmp_by_arg(pt_1, pt_2);
-        }
-        else {
-            return pt_1.value() < pt_2.value();
+    class ArgCmp {
+    public:
+        bool operator()(const point_type &pt_1, const point_type &pt_2) const {
+            if (!(pt_1.arg() < pt_2.arg()) && !(pt_2.arg() < pt_1.arg())) {
+                return pt_1.value() < pt_2.value();
+            }
+            else {
+                return pt_1.arg() < pt_2.arg();
+            }
         }
     };
 
-    using pts_set_t = std::set<point_type, decltype(cmp_by_arg)>;
-    using max_set_t = std::set<point_type, decltype(cmp_by_val_then_by_arg)>;
+
+    class ValCmp {
+    public:
+        bool operator()(const point_type &pt_1, const point_type &pt_2) const {
+            if (!(pt_1.value() < pt_2.value()) && !(pt_2.value() < pt_1.value())) {
+                return pt_1.arg() < pt_2.arg();
+            }
+            else {
+                return pt_1.value() < pt_2.value();
+            }
+        }
+    };
+
+
+    using pts_set_t = std::set<point_type, ArgCmp>;
+    using max_set_t = std::set<point_type, ValCmp>;
 
     pts_set_t pts_set;
     max_set_t max_set;
@@ -130,9 +148,10 @@ private:
 
         InsertGuard &operator=(InsertGuard &&other) = delete;
 
-        void insert(const point_type &pt) {
+        typename S::iterator insert(const point_type &pt) {
             it = set->insert(pt).first;
             rollback = true;
+            return it;
         }
 
         void drop_rollback() {
@@ -153,6 +172,10 @@ private:
                && (right == end() || !(middle->value() < right->value()));
     };
 
+    bool mx_set_contains(iterator_t it) const {
+        return max_set.find(*it) != mx_end();
+    }
+
 public:
     using iterator = typename pts_set_t::iterator;
     using mx_iterator = typename max_set_t::iterator;
@@ -167,7 +190,7 @@ public:
     }
 
     iterator find(const A &a) const {
-        return pts_set.find(point_type(a));
+        return pts_set.find(point_type(&a));
     }
 
     mx_iterator mx_begin() const noexcept {
@@ -184,11 +207,105 @@ public:
 };
 
 
-// Zmienia funkcję tak, żeby zachodziło f(a) = v. Jeśli a nie należy do
-// obecnej dziedziny funkcji, jest do niej dodawany. Najwyżej O(log n).
 template<typename A, typename V>
 void FunctionMaxima<A, V>::set_value(const A &a, const V &v) {
-    //TODO: implement
+    iterator iter = find(a);
+
+    if (iter == end() || (!(v < iter->value()) && !(iter->value() < v))) {
+        InsertGuard<pts_set_t> pts_set_guard{&pts_set};
+        InsertGuard<max_set_t> left_max_set_guard{&max_set};
+        InsertGuard<max_set_t> middle_max_set_guard{&max_set};
+        InsertGuard<max_set_t> right_max_set_guard{&max_set};
+
+        iterator it;
+        if (iter == end()) {
+            it = pts_set_guard.insert(point_type{a, v});
+        }
+        else {
+            it = pts_set_guard.insert(point_type{&iter->arg(), v});
+        }
+        mx_iterator mx_iter = max_set.find(point_type{&a});
+
+        bool has_left = it != begin() && (std::prev(it) != iter || iter != begin());
+        bool has_right = std::next(it) != end()
+                         && (std::next(it) != iter || std::next(iter) != end());
+
+        if (has_left) {
+            iterator middle =
+                    std::prev(it) != iter ? std::prev(it) : std::prev(it, 2);
+            iterator left = middle != begin() ? std::prev(middle) : middle;
+            iterator right = std::next(it) != iter ? std::next(it) :
+                             (std::next(iter) == end() ? iter : std::next(iter));
+
+            if (is_local_max(left, middle, right) && !mx_set_contains(middle)) {
+                left_max_set_guard.insert(*middle);
+            }
+        }
+
+        {
+            iterator left = has_left ? (std::prev(it) != iter
+                                        ? std::prev(it) : std::prev(it, 2)) : it;
+            iterator middle = it;
+            iterator right = has_right ? (std::next(it) != iter ? std::next(it)
+                                                                : std::next(it, 2)) :
+                             (std::next(it) == iter ? std::next(it, 2) : std::next(
+                                     it));
+
+            if (is_local_max(left, middle, right) && !mx_set_contains(middle)) {
+                middle_max_set_guard.insert(*middle);
+            }
+        }
+
+        if (has_right) {
+            iterator left = has_left ? (std::prev(it) != iter ? std::prev(it)
+                                                              : std::prev(it, 2))
+                                     : it;
+            iterator middle =
+                    std::next(it) != iter ? std::next(it) : std::next(it, 2);
+            iterator right = std::next(middle) != end() ? std::next(middle) : middle;
+
+            if (is_local_max(left, middle, right) && !mx_set_contains(middle)) {
+                right_max_set_guard.insert(*middle);
+            }
+        }
+
+        if (has_left) {
+            iterator middle =
+                    std::prev(it) != iter ? std::prev(it) : std::prev(it, 2);
+            iterator left = middle != begin() ? std::prev(middle) : middle;
+            iterator right = std::next(it) != iter ? std::next(it) :
+                             (std::next(iter) == end() ? iter : std::next(iter));
+
+            if (!is_local_max(left, middle, right) && mx_set_contains(middle)) {
+                max_set.erase(middle);
+            }
+        }
+
+        if (has_right) {
+            iterator left = has_left ? (std::prev(it) != iter ? std::prev(it)
+                                                              : std::prev(it, 2))
+                                     : it;
+            iterator middle =
+                    std::next(it) != iter ? std::next(it) : std::next(it, 2);
+            iterator right = std::next(middle) != end() ? std::next(middle) : middle;
+
+            if (!is_local_max(left, middle, right) && mx_set_contains(middle)) {
+                max_set.erase(middle);
+            }
+        }
+
+        if (iter != end()) {
+            if (mx_iter != mx_end()) {
+                max_set.erase(mx_iter);
+            }
+            pts_set.erase(iter);
+        }
+
+        pts_set_guard.drop_rollback();
+        left_max_set_guard.drop_rollback();
+        middle_max_set_guard.drop_rollback();
+        right_max_set_guard.drop_rollback();
+    }
 }
 
 template<typename A, typename V>
@@ -200,27 +317,27 @@ void FunctionMaxima<A, V>::erase(const A &a) {
     else if (size() > 0) {
         iterator it = find(a);
         bool has_left = it != begin();
-        bool has_right = it + 1 != end();
-        mx_iterator mx_it = max_set.find(a);
+        bool has_right = std::next(it) != end();
+        mx_iterator mx_it = max_set.find(point_type{&a});
         bool was_local_max = mx_it != mx_end();
-        InsertGuard<max_set_t> left_guard{max_set}, right_guard{max_set};
+        InsertGuard<max_set_t> left_guard{&max_set}, right_guard{&max_set};
 
         if (has_left) {
-            iterator middle = it - 1;
-            iterator left = middle != begin() ? middle - 1 : middle;
-            iterator right = it + 1;
+            iterator middle = std::prev(it);
+            iterator left = middle != begin() ? std::prev(middle) : middle;
+            iterator right = std::next(it);
 
-            if (is_local_max(left, middle, right)) {
+            if (is_local_max(left, middle, right) && !mx_set_contains(middle)) {
                 left_guard.insert(*middle);
             }
         }
 
         if (has_right) {
-            iterator left = has_left ? it - 1 : it + 1;
-            iterator middle = it + 1;
-            iterator right = middle != end() ? middle + 1 : middle;
+            iterator left = has_left ? std::prev(it) : std::next(it);
+            iterator middle = std::next(it);
+            iterator right = middle != end() ? std::next(middle) : middle;
 
-            if (is_local_max(left, middle, right)) {
+            if (is_local_max(left, middle, right) && !mx_set_contains(middle)) {
                 right_guard.insert(*middle);
             }
         }
