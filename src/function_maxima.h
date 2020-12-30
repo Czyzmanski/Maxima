@@ -5,6 +5,13 @@
 #include <map>
 #include <memory>
 
+namespace {
+    template<typename T>
+    bool operator==(const T &t_1, const T &t_2) {
+        return !(t_1 < t_2) && !(t_2 < t_1);
+    }
+}
+
 
 class InvalidArg : public std::exception {
 public:
@@ -18,7 +25,7 @@ public:
 
     InvalidArg &operator=(InvalidArg &&other) noexcept = default;
 
-    const char *what() const noexcept override {
+    [[nodiscard]] const char *what() const noexcept override {
         return "invalid argument value";
     }
 };
@@ -97,7 +104,7 @@ private:
     class ArgCmp {
     public:
         bool operator()(const point_type &pt_1, const point_type &pt_2) const {
-            if (!(pt_1.arg() < pt_2.arg()) && !(pt_2.arg() < pt_1.arg())) {
+            if (pt_1.arg() == pt_2.arg()) {
                 return pt_1.value() < pt_2.value();
             }
             else {
@@ -110,7 +117,7 @@ private:
     class ValCmp {
     public:
         bool operator()(const point_type &pt_1, const point_type &pt_2) const {
-            if (!(pt_1.value() < pt_2.value()) && !(pt_2.value() < pt_1.value())) {
+            if (pt_1.value() == pt_2.value()) {
                 return pt_1.arg() < pt_2.arg();
             }
             else {
@@ -160,6 +167,7 @@ private:
         typename T::iterator insert(const point_type &pt) {
             it = container->insert(pt).first;
             rollback = true;
+
             return it;
         }
 
@@ -206,7 +214,6 @@ private:
                 was_present = true;
                 prev_pt = old_it->second;
             }
-
             it = container->insert_or_assign(pt.a_ptr, pt).first;
             rollback = true;
 
@@ -273,7 +280,6 @@ private:
                                             InsertGuard<mx_set_t> &insert_guard) {
         auto[l, m, r] = l_pt_neighborhood(old_it, new_it);
         mx_iterator_t mx_it = mx_set.find(*m);
-
         if (is_local_mx(l, m, r) && mx_it == mx_end()) {
             insert_guard.insert(*m);
         }
@@ -285,7 +291,6 @@ private:
                                          iterator_t old_it, iterator_t new_it,
                                          InsertGuard<mx_set_t> &insert_guard) {
         auto[l, m, r] = l_pt_neighborhood(old_it, new_it);
-
         if (!is_local_mx(l, m, r) && mx_it != mx_end()) {
             mx_set.erase(mx_it);
         }
@@ -295,7 +300,6 @@ private:
     update_new_pt_if_new_loc_mx(bool has_l, iterator_t old_it, iterator_t new_it,
                                 InsertGuard<mx_set_t> &insert_guard) {
         auto[l, m, r] = new_pt_neighborhood(has_l, old_it, new_it);
-
         if (is_local_mx(l, m, r) && !mx_set_contains(m)) {
             insert_guard.insert(*m);
         }
@@ -305,7 +309,6 @@ private:
                                             InsertGuard<mx_set_t> &insert_guard) {
         auto[l, m, r] = r_pt_neighborhood(old_it, new_it);
         mx_iterator_t mx_it = mx_set.find(*m);
-
         if (is_local_mx(l, m, r) && mx_it == mx_end()) {
             insert_guard.insert(*m);
         }
@@ -317,7 +320,6 @@ private:
                                          iterator_t old_it, iterator_t new_it,
                                          InsertGuard<mx_set_t> &insert_guard) {
         auto[l, m, r] = r_pt_neighborhood(old_it, new_it);
-
         if (!is_local_mx(l, m, r) && mx_it != mx_end()) {
             mx_set.erase(mx_it);
         }
@@ -338,7 +340,6 @@ public:
 
     iterator find(const A &a) const {
         auto map_it = pts_map.find(std::make_shared<const A>(a));
-
         if (map_it == pts_map.end()) {
             return end();
         }
@@ -364,7 +365,6 @@ public:
 template<typename A, typename V>
 void FunctionMaxima<A, V>::set_value(const A &a, const V &v) {
     iterator old_it = pts_set.find(point_type{a, v});
-
     if (old_it == end()) {
         InsertGuard<pts_set_t> pts_set_guard{&pts_set};
         MapInsertGuard<pts_map_t> pts_map_guard{&pts_map};
@@ -374,22 +374,18 @@ void FunctionMaxima<A, V>::set_value(const A &a, const V &v) {
 
         iterator new_it = pts_set_guard.insert(point_type{a, v});
         pts_map_guard.insert(point_type{a, v});
-
         if (new_it != begin()) {
             iterator prev_it = std::prev(new_it);
-            if (!(new_it->arg() < prev_it->arg())
-                && !(prev_it->arg() < new_it->arg())) {
+            if (new_it->arg() == prev_it->arg()) {
                 old_it = prev_it;
             }
         }
         if (std::next(new_it) != end()) {
             iterator next_it = std::next(new_it);
-            if (!(new_it->arg() < next_it->arg())
-                && !(next_it->arg() < new_it->arg())) {
+            if (new_it->arg() == next_it->arg()) {
                 old_it = next_it;
             }
         }
-
         mx_iterator mx_iter = old_it == end() ? mx_end() : mx_set.find(*old_it);
 
         bool has_l = new_it != begin()
@@ -448,7 +444,6 @@ void FunctionMaxima<A, V>::erase(const A &a) {
                 l_guard.insert(*m);
             }
         }
-
         if (has_r) {
             iterator l = has_l ? std::prev(it) : std::next(it);
             iterator m = std::next(it);
