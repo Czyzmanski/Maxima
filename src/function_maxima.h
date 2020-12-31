@@ -41,11 +41,11 @@ public:
     public:
         ~point_type() = default;
 
-        point_type(const point_type &other) = default;
+        point_type(const point_type &other) noexcept = default;
 
         point_type(point_type &&other) noexcept = default;
 
-        point_type &operator=(const point_type &other) = default;
+        point_type &operator=(const point_type &other) noexcept = default;
 
         point_type &operator=(point_type &&other) noexcept = default;
 
@@ -64,12 +64,10 @@ public:
         a_ptr_t a_ptr;
         v_ptr_t v_ptr;
 
-        point_type() = default;
+        explicit point_type(const A &a) : a_ptr{std::make_shared<const A>(a)} {}
 
-        explicit point_type(const A &a) : a_ptr(std::make_shared<const A>(a)) {}
-
-        point_type(const A &a, const V &v) : a_ptr(std::make_shared<const A>(a)),
-                                             v_ptr(std::make_shared<const V>(v)) {}
+        point_type(const A &a, const V &v) : a_ptr{std::make_shared<const A>(a)},
+                                             v_ptr{std::make_shared<const V>(v)} {}
     };
 
 
@@ -87,7 +85,6 @@ public:
 
     const V &value_at(const A &a) const {
         iterator it = find(a);
-
         if (it == end()) {
             throw InvalidArg();
         }
@@ -101,6 +98,7 @@ public:
     void erase(const A &a);
 
 private:
+    /* Compares two points first by their arguments, then by their values. */
     class ArgCmp {
     public:
         bool operator()(const point_type &pt_1, const point_type &pt_2) const {
@@ -114,6 +112,7 @@ private:
     };
 
 
+    /* Compares two points first by their values, then by their arguments. */
     class ValCmp {
     public:
         bool operator()(const point_type &pt_1, const point_type &pt_2) const {
@@ -127,7 +126,8 @@ private:
     };
 
 
-    class KeyCmp {
+    /* Compares two shared pointers by values of the objects they point to. */
+    class SharedPtrCmp {
     public:
         bool operator()(const typename point_type::a_ptr_t &a_ptr_1,
                         const typename point_type::a_ptr_t &a_ptr_2) const {
@@ -138,7 +138,7 @@ private:
 
     using pts_set_t = std::set<point_type, ArgCmp>;
     using mx_set_t = std::set<point_type, ValCmp>;
-    using pts_map_t = std::map<typename point_type::a_ptr_t, point_type, KeyCmp>;
+    using pts_map_t = std::map<typename point_type::a_ptr_t, point_type, SharedPtrCmp>;
 
     pts_set_t pts_set;
     mx_set_t mx_set;
@@ -148,7 +148,8 @@ private:
     template<typename T>
     class InsertGuard {
     public:
-        explicit InsertGuard(T *container) : container{container}, rollback{false} {}
+        explicit InsertGuard(T *container) noexcept: container{container},
+                                                     rollback{false} {}
 
         ~InsertGuard() {
             if (rollback) {
@@ -164,6 +165,7 @@ private:
 
         InsertGuard &operator=(InsertGuard &&other) = delete;
 
+        /* Returns iterator to newly inserted element. */
         typename T::iterator insert(const point_type &pt) {
             it = container->insert(pt).first;
             rollback = true;
@@ -208,6 +210,7 @@ private:
 
         MapInsertGuard &operator=(MapInsertGuard &&other) = delete;
 
+        /* Returns iterator to newly inserted element. */
         typename T::iterator insert(const point_type &pt) {
             auto old_it = container->find(pt.a_ptr);
             if (old_it != container->end()) {
@@ -236,6 +239,11 @@ private:
     using iterator_t = typename pts_set_t::iterator;
     using mx_iterator_t = typename mx_set_t::iterator;
 
+    /* Returns true if point pointed to by iterator m is local maximum
+     * if point pointed to by iterator l is its left neighbor
+     * and point pointed to by iterator r is its right neighbor.
+     * If l == m or r == end(), then point pointed to by iterator m has no left
+     * neighbor or has no right neighbor, respectively. */
     bool is_local_mx(iterator_t l, iterator_t m, iterator_t r) const {
         return (l == m || !(m->value() < l->value()))
                && (r == end() || !(m->value() < r->value()));
@@ -296,9 +304,9 @@ private:
         }
     }
 
-    void
-    update_new_pt_if_new_loc_mx(bool has_l, iterator_t old_it, iterator_t new_it,
-                                InsertGuard<mx_set_t> &insert_guard) {
+    void update_new_pt_if_new_loc_mx(bool has_l, iterator_t old_it,
+                                     iterator_t new_it,
+                                     InsertGuard<mx_set_t> &insert_guard) {
         auto[l, m, r] = new_pt_neighborhood(has_l, old_it, new_it);
         if (is_local_mx(l, m, r) && !mx_set_contains(m)) {
             insert_guard.insert(*m);
