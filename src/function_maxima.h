@@ -64,6 +64,8 @@ public:
         a_ptr_t a_ptr;
         v_ptr_t v_ptr;
 
+        point_type() noexcept = default;
+
         explicit point_type(const A &a) : a_ptr{std::make_shared<const A>(a)} {}
 
         point_type(const A &a, const V &v) : a_ptr{std::make_shared<const A>(a)},
@@ -372,7 +374,8 @@ public:
 
 template<typename A, typename V>
 void FunctionMaxima<A, V>::set_value(const A &a, const V &v) {
-    iterator old_it = pts_set.find(point_type{a, v});
+    point_type pt{a, v};
+    iterator old_it = pts_set.find(pt);
     if (old_it == end()) {
         InsertGuard<pts_set_t> pts_set_guard{&pts_set};
         MapInsertGuard<pts_map_t> pts_map_guard{&pts_map};
@@ -380,8 +383,8 @@ void FunctionMaxima<A, V>::set_value(const A &a, const V &v) {
         InsertGuard<mx_set_t> new_mx_set_guard{&mx_set};
         InsertGuard<mx_set_t> r_mx_set_guard{&mx_set};
 
-        iterator new_it = pts_set_guard.insert(point_type{a, v});
-        pts_map_guard.insert(point_type{a, v});
+        iterator new_it = pts_set_guard.insert(pt);
+        pts_map_guard.insert(pt);
         if (new_it != begin()) {
             iterator prev_it = std::prev(new_it);
             if (new_it->arg() == prev_it->arg()) {
