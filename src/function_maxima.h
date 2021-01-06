@@ -466,9 +466,7 @@ void FunctionMaxima<A, V>::erase(const A &a) {
                 r_mx_it = mx_set.find(*m);
             }
         }
-
-
-
+        
         pts_set.erase(it);
         pts_map.erase(map_it);
         if (erase_left) {
