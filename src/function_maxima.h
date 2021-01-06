@@ -297,15 +297,6 @@ private:
         return mx_it;
     }
 
-    void update_l_pt_if_no_longer_loc_mx(mx_iterator_t mx_it,
-                                         iterator_t old_it, iterator_t new_it,
-                                         InsertGuard<mx_set_t> &insert_guard) {
-        auto[l, m, r] = l_pt_neighborhood(old_it, new_it);
-        if (!is_local_mx(l, m, r) && mx_it != mx_end()) {
-            mx_set.erase(mx_it);
-        }
-    }
-
     void update_new_pt_if_new_loc_mx(bool has_l, iterator_t old_it,
                                      iterator_t new_it,
                                      InsertGuard<mx_set_t> &insert_guard) {
@@ -324,15 +315,6 @@ private:
         }
 
         return mx_it;
-    }
-
-    void update_r_pt_if_no_longer_loc_mx(mx_iterator_t mx_it,
-                                         iterator_t old_it, iterator_t new_it,
-                                         InsertGuard<mx_set_t> &insert_guard) {
-        auto[l, m, r] = r_pt_neighborhood(old_it, new_it);
-        if (!is_local_mx(l, m, r) && mx_it != mx_end()) {
-            mx_set.erase(mx_it);
-        }
     }
 
 public:
@@ -413,11 +395,21 @@ void FunctionMaxima<A, V>::set_value(const A &a, const V &v) {
             mx_r_it = update_r_pt_if_new_loc_mx(old_it, new_it, r_mx_set_guard);
         }
 
+        bool erase_left = false, erase_right = false;
         if (has_l) {
-            update_l_pt_if_no_longer_loc_mx(mx_l_it, old_it, new_it, l_mx_set_guard);
+            auto[l, m, r] = l_pt_neighborhood(old_it, new_it);
+            erase_left = !is_local_mx(l, m, r) && mx_l_it != mx_end();
         }
         if (has_r) {
-            update_r_pt_if_no_longer_loc_mx(mx_r_it, old_it, new_it, r_mx_set_guard);
+            auto[l, m, r] = r_pt_neighborhood(old_it, new_it);
+            erase_right = !is_local_mx(l, m, r) && mx_r_it != mx_end();
+        }
+
+        if (erase_left) {
+            mx_set.erase(mx_l_it);
+        }
+        if (erase_right) {
+            mx_set.erase(mx_r_it);
         }
 
         if (old_it != end()) {
