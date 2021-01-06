@@ -445,6 +445,8 @@ void FunctionMaxima<A, V>::erase(const A &a) {
         bool has_r = std::next(it) != end();
         bool was_local_mx = mx_it != mx_end();
         InsertGuard<mx_set_t> l_guard{&mx_set}, r_guard{&mx_set};
+        bool erase_left = false, erase_right = false;
+        mx_iterator l_mx_it, r_mx_it;
 
         if (has_l) {
             iterator m = std::prev(it);
@@ -453,6 +455,10 @@ void FunctionMaxima<A, V>::erase(const A &a) {
 
             if (is_local_mx(l, m, r) && !mx_set_contains(m)) {
                 l_guard.insert(*m);
+            }
+            else if (!is_local_mx(l, m, r) && mx_set_contains(m)) {
+                erase_left = true;
+                l_mx_it = mx_set.find(*m);
             }
         }
         if (has_r) {
@@ -463,12 +469,24 @@ void FunctionMaxima<A, V>::erase(const A &a) {
             if (is_local_mx(l, m, r) && !mx_set_contains(m)) {
                 r_guard.insert(*m);
             }
+            else if (!is_local_mx(l, m, r) && mx_set_contains(m)) {
+                erase_right = true;
+                r_mx_it = mx_set.find(*m);
+            }
         }
+
+
 
         pts_set.erase(it);
         pts_map.erase(map_it);
+        if (erase_left) {
+            mx_set.erase(l_mx_it);
+        }
         if (was_local_mx) {
             mx_set.erase(mx_it);
+        }
+        if (erase_right) {
+            mx_set.erase(r_mx_it);
         }
 
         l_guard.drop_rollback();
