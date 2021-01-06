@@ -81,7 +81,12 @@ public:
 
     FunctionMaxima(FunctionMaxima<A, V> &&other) noexcept = default;
 
-    FunctionMaxima &operator=(const FunctionMaxima<A, V> &other) = default;
+    FunctionMaxima &operator=(const FunctionMaxima<A, V> &other) {
+        FunctionMaxima<A, V> temp{other};
+        swap(temp);
+
+        return *this;
+    }
 
     FunctionMaxima &operator=(FunctionMaxima<A, V> &&other) noexcept = default;
 
@@ -237,6 +242,11 @@ private:
         point_type prev_pt;
     };
 
+    void swap(FunctionMaxima &other) noexcept {
+        std::swap(pts_set, other.pts_set);
+        std::swap(mx_set, other.mx_set);
+        std::swap(pts_map, other.pts_map);
+    }
 
     using iterator_t = typename pts_set_t::iterator;
     using mx_iterator_t = typename mx_set_t::iterator;
@@ -466,7 +476,7 @@ void FunctionMaxima<A, V>::erase(const A &a) {
                 r_mx_it = mx_set.find(*m);
             }
         }
-        
+
         pts_set.erase(it);
         pts_map.erase(map_it);
         if (erase_left) {
