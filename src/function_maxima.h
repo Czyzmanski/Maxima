@@ -153,24 +153,24 @@ private:
 
 
     template<typename T>
-    class InsertGuard {
+    class SetInsertGuard {
     public:
-        explicit InsertGuard(T *container) noexcept: container{container},
-                                                     rollback{false} {}
+        explicit SetInsertGuard(T *container) noexcept: container{container},
+                                                        rollback{false} {}
 
-        ~InsertGuard() {
+        ~SetInsertGuard() {
             if (rollback) {
                 container->erase(it);
             }
         }
 
-        InsertGuard(const InsertGuard &other) = delete;
+        SetInsertGuard(const SetInsertGuard &other) = delete;
 
-        InsertGuard &operator=(const InsertGuard &other) = delete;
+        SetInsertGuard &operator=(const SetInsertGuard &other) = delete;
 
-        InsertGuard(InsertGuard &&other) = delete;
+        SetInsertGuard(SetInsertGuard &&other) = delete;
 
-        InsertGuard &operator=(InsertGuard &&other) = delete;
+        SetInsertGuard &operator=(SetInsertGuard &&other) = delete;
 
         /* Returns iterator to newly inserted element. */
         typename T::iterator insert(const point_type &pt) {
@@ -180,7 +180,7 @@ private:
             return it;
         }
 
-        void drop_rollback() {
+        void drop_rollback() noexcept {
             rollback = false;
         }
 
@@ -230,7 +230,7 @@ private:
             return it;
         }
 
-        void drop_rollback() {
+        void drop_rollback() noexcept {
             rollback = false;
         }
 
@@ -251,6 +251,10 @@ private:
     using iterator_t = typename pts_set_t::iterator;
     using mx_iterator_t = typename mx_set_t::iterator;
 
+    using set_insert_guard_t = SetInsertGuard<pts_set_t>;
+    using mx_set_insert_guard_t = SetInsertGuard<mx_set_t>;
+    using map_insert_guard_t = MapInsertGuard<pts_map_t>;
+
     /* Returns true if point pointed to by iterator m is local maximum
      * if point pointed to by iterator l is its left neighbor
      * and point pointed to by iterator r is its right neighbor.
@@ -265,6 +269,7 @@ private:
         return mx_set.find(*it) != mx_end();
     }
 
+    /* Tuple representing iterators to three consecutive points. */
     using neighborhood_t = std::tuple<iterator_t, iterator_t, iterator_t>;
 
     neighborhood_t l_pt_neighborhood(iterator_t old_it, iterator_t new_it) {
@@ -297,7 +302,7 @@ private:
     }
 
     mx_iterator_t update_l_pt_if_new_loc_mx(iterator_t old_it, iterator_t new_it,
-                                            InsertGuard<mx_set_t> &insert_guard) {
+                                            mx_set_insert_guard_t &insert_guard) {
         auto[l, m, r] = l_pt_neighborhood(old_it, new_it);
         mx_iterator_t mx_it = mx_set.find(*m);
         if (is_local_mx(l, m, r) && mx_it == mx_end()) {
@@ -309,7 +314,7 @@ private:
 
     void update_new_pt_if_new_loc_mx(bool has_l, iterator_t old_it,
                                      iterator_t new_it,
-                                     InsertGuard<mx_set_t> &insert_guard) {
+                                     mx_set_insert_guard_t &insert_guard) {
         auto[l, m, r] = new_pt_neighborhood(has_l, old_it, new_it);
         if (is_local_mx(l, m, r) && !mx_set_contains(m)) {
             insert_guard.insert(*m);
@@ -317,7 +322,7 @@ private:
     }
 
     mx_iterator_t update_r_pt_if_new_loc_mx(iterator_t old_it, iterator_t new_it,
-                                            InsertGuard<mx_set_t> &insert_guard) {
+                                            mx_set_insert_guard_t &insert_guard) {
         auto[l, m, r] = r_pt_neighborhood(old_it, new_it);
         mx_iterator_t mx_it = mx_set.find(*m);
         if (is_local_mx(l, m, r) && mx_it == mx_end()) {
@@ -369,11 +374,11 @@ void FunctionMaxima<A, V>::set_value(const A &a, const V &v) {
     point_type pt{a, v};
     iterator old_it = pts_set.find(pt);
     if (old_it == end()) {
-        InsertGuard<pts_set_t> pts_set_guard{&pts_set};
-        MapInsertGuard<pts_map_t> pts_map_guard{&pts_map};
-        InsertGuard<mx_set_t> l_mx_set_guard{&mx_set};
-        InsertGuard<mx_set_t> new_mx_set_guard{&mx_set};
-        InsertGuard<mx_set_t> r_mx_set_guard{&mx_set};
+        set_insert_guard_t pts_set_guard{&pts_set};
+        map_insert_guard_t pts_map_guard{&pts_map};
+        mx_set_insert_guard_t l_mx_set_guard{&mx_set};
+        mx_set_insert_guard_t new_mx_set_guard{&mx_set};
+        mx_set_insert_guard_t r_mx_set_guard{&mx_set};
 
         iterator new_it = pts_set_guard.insert(pt);
         pts_map_guard.insert(pt);
@@ -396,30 +401,30 @@ void FunctionMaxima<A, V>::set_value(const A &a, const V &v) {
         bool has_r = std::next(new_it) != end()
                      && (std::next(new_it) != old_it || std::next(old_it) != end());
 
-        mx_iterator mx_l_it, mx_r_it;
+        mx_iterator l_mx_it, r_mx_it;
         if (has_l) {
-            mx_l_it = update_l_pt_if_new_loc_mx(old_it, new_it, l_mx_set_guard);
+            l_mx_it = update_l_pt_if_new_loc_mx(old_it, new_it, l_mx_set_guard);
         }
         update_new_pt_if_new_loc_mx(has_l, old_it, new_it, new_mx_set_guard);
         if (has_r) {
-            mx_r_it = update_r_pt_if_new_loc_mx(old_it, new_it, r_mx_set_guard);
+            r_mx_it = update_r_pt_if_new_loc_mx(old_it, new_it, r_mx_set_guard);
         }
 
         bool erase_left = false, erase_right = false;
         if (has_l) {
             auto[l, m, r] = l_pt_neighborhood(old_it, new_it);
-            erase_left = !is_local_mx(l, m, r) && mx_l_it != mx_end();
+            erase_left = !is_local_mx(l, m, r) && l_mx_it != mx_end();
         }
         if (has_r) {
             auto[l, m, r] = r_pt_neighborhood(old_it, new_it);
-            erase_right = !is_local_mx(l, m, r) && mx_r_it != mx_end();
+            erase_right = !is_local_mx(l, m, r) && r_mx_it != mx_end();
         }
 
         if (erase_left) {
-            mx_set.erase(mx_l_it);
+            mx_set.erase(l_mx_it);
         }
         if (erase_right) {
-            mx_set.erase(mx_r_it);
+            mx_set.erase(r_mx_it);
         }
 
         if (old_it != end()) {
@@ -446,7 +451,7 @@ void FunctionMaxima<A, V>::erase(const A &a) {
         bool has_l = it != begin();
         bool has_r = std::next(it) != end();
         bool was_local_mx = mx_it != mx_end();
-        InsertGuard<mx_set_t> l_guard{&mx_set}, r_guard{&mx_set};
+        mx_set_insert_guard_t l_guard{&mx_set}, r_guard{&mx_set};
         bool erase_left = false, erase_right = false;
         mx_iterator l_mx_it, r_mx_it;
 
