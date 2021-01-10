@@ -286,7 +286,7 @@ private:
         iterator l = has_l ? (std::prev(new_it) != old_it ?
                               std::prev(new_it) : std::prev(new_it, 2)) : new_it;
         iterator m = new_it;
-        iterator r = std::next(new_it) != old_it ?
+        iterator r = (std::next(new_it) != old_it || old_it == end()) ?
                      std::next(new_it) : std::next(new_it, 2);
 
         return {l, m, r};
